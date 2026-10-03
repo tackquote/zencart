@@ -3,7 +3,7 @@
 # Build the Zen Cart artifact, reproducibly: dist/tack-zencart.zip.
 #
 # Split out of the hub repository's scripts/package-all.sh
-# (https://github.com/ackm04/tack-ecommerce-extensions) when this companion moved
+# (https://github.com/tackquote/tack-ecommerce-extensions) when this companion moved
 # to its own repository.
 #
 # No package installer: the admin copies a file tree over the store root and runs
