@@ -1,10 +1,11 @@
 # TackQuote for Zen Cart
 
+> Part of the TackQuote integrations family. All platforms are indexed in the hub repository: [ackm04/tack-ecommerce-extensions](https://github.com/ackm04/tack-ecommerce-extensions) (TackQuote integrations index).
+
 A Zen Cart storefront + admin companion that adds a "Request a Quote" button
 to product info pages and connects the store to a TackQuote B2B quoting
 account (API base URL + API key). It mirrors the pattern used by the
-TackQuote WooCommerce and PrestaShop companions
-(`wordpress/tackquote/`, `prestashop/modules/tackquotes/`),
+TackQuote WooCommerce and PrestaShop companions,
 adapted to Zen Cart's classic PHP architecture — no DI container and (unlike
 PrestaShop's `displayProductActions` hook) no plugin hook point on the default
 product info template, so this ships as a set of files you copy into your Zen
@@ -27,8 +28,9 @@ store talk to TackQuote; `TACK_CONNECTOR_TOKEN` lets TackQuote talk to this
 store. Neither is usable in the other direction.
 
 Distribution authority: the public GitHub release asset is
-[`tack-zencart.zip`](https://github.com/ackm04/tack-ecommerce-extensions/releases/latest/download/tack-zencart.zip).
-This monorepo directory is build/source only. No Zen Cart plugin-directory listing
+[`tack-zencart.zip`](https://github.com/__REPO_SLUG__/releases/latest/download/tack-zencart.zip),
+built by `bash scripts/package.sh` (writes `dist/tack-zencart.zip`).
+This repository is build/source only. No Zen Cart plugin-directory listing
 is claimed.
 
 > **New in 1.1.0.** The connector half did not exist before. `ZenCartService`
@@ -70,9 +72,10 @@ inside your Zen Cart storefront root, so the copy is a straight merge into your
 existing `includes/` tree — do not overwrite unrelated files, and do not create
 a `store-root` directory on the server.
 
-In this repository the same files sit flat under `zencart/`
+In this repository the same files sit flat at the repository root
 (`zc_install/`, `README.md`, and the store files side by side); the
-`store-root/` wrapper is created by the release packaging step.
+`store-root/` wrapper is created by the release packaging step
+(`scripts/package.sh`).
 
 ## Installation
 
