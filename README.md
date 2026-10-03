@@ -28,7 +28,7 @@ store talk to TackQuote; `TACK_CONNECTOR_TOKEN` lets TackQuote talk to this
 store. Neither is usable in the other direction.
 
 Distribution authority: the public GitHub release asset is
-[`tack-zencart.zip`](https://github.com/__REPO_SLUG__/releases/latest/download/tack-zencart.zip),
+[`tack-zencart.zip`](https://github.com/tackquote/zencart/releases/latest/download/tack-zencart.zip),
 built by `bash scripts/package.sh` (writes `dist/tack-zencart.zip`).
 This repository is build/source only. No Zen Cart plugin-directory listing
 is claimed.
