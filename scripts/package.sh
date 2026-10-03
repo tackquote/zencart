@@ -28,8 +28,17 @@ trap 'rm -rf "$STAGE"' EXIT
 # paths as it stores them, so they are relative to the staged tree.
 COMMON_EX=( -x '*/.git/*' -x '*/.gitignore' -x '*/.DS_Store' -x '*/__MACOSX/*' -x '*/._*' )
 
-say() { printf '  %s
-' "$*"; }
+say() { printf '  %s\n' "$*"; }
+
+# export_head <dir> -- extract this repository's committed tree (HEAD) into
+# <dir>. Every artifact is staged from git, never from the working tree, so
+# local litter (node_modules/, composer.lock, .php-cs-fixer.cache, a non-dist
+# outdir from an earlier run, ...) can never reach a zip: only tracked files
+# exist to be packed. Uncommitted edits are not packed either -- commit first.
+export_head() {
+  mkdir -p "$1"
+  git -C "$ROOT" archive --format=tar HEAD | tar -x -C "$1"
+}
 
 pack() { # pack <zipname> <top-level-dir> [extra zip -x args...]
   local name="$1" top="$2"; shift 2
@@ -39,11 +48,12 @@ pack() { # pack <zipname> <top-level-dir> [extra zip -x args...]
 
 say "zencart"
 rm -rf "$STAGE/tack-zencart" && mkdir -p "$STAGE/tack-zencart/store-root"
+export_head "$STAGE/src"
 for p in tack-connector includes ajax_tack_quote_request.php; do
-  [ -e "$ROOT/$p" ] && cp -R "$ROOT/$p" "$STAGE/tack-zencart/store-root/"
+  [ -e "$STAGE/src/$p" ] && cp -R "$STAGE/src/$p" "$STAGE/tack-zencart/store-root/"
 done
-cp -R "$ROOT/zc_install" "$STAGE/tack-zencart/"
-cp "$ROOT/README.md" "$STAGE/tack-zencart/"
+cp -R "$STAGE/src/zc_install" "$STAGE/tack-zencart/"
+cp "$STAGE/src/README.md" "$STAGE/tack-zencart/"
 find "$STAGE/tack-zencart" -name '.DS_Store' -delete 2>/dev/null || true
 pack tack-zencart.zip tack-zencart
 
