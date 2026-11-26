@@ -7,6 +7,7 @@
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $key = isset($_SERVER['HTTP_X_API_KEY']) ? $_SERVER['HTTP_X_API_KEY'] : '';
 file_put_contents(getenv('TACK_FAKE_LOG'), $_SERVER['REQUEST_METHOD'] . ' ' . $path . "\n", FILE_APPEND);
+file_put_contents(getenv('TACK_FAKE_LOG') . '.ua', (isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '') . "\n", FILE_APPEND);
 header('Content-Type: application/json');
 
 if ($path === '/health' || $path === '/v1/health') {

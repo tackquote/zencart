@@ -58,8 +58,10 @@ is claimed.
 > already ran `install.sql`: copy the new `admin/` files and run
 > `zc_install/upgrade_admin_page.sql`.
 >
-> Tests: `php tests/ConnectionTest.php` and `php tests/AdminPageTest.php` (run in CI and
-> before every release). The storefront button and the connector are unchanged.
+> Tests: `php tests/ConnectionTest.php`, `php tests/AdminPageTest.php` and
+> `php tests/SqlPatchPrefixTest.php` (every table in `zc_install/*.sql` gets the store's
+> table prefix under Tools ▸ Install SQL Patches) run in CI and before every release.
+> The API client's User-Agent now carries the real module version. The storefront button and the connector are unchanged.
 
 > **New in 1.1.0.** The connector half did not exist before. `ZenCartService`
 > had always called `{baseUrl}/tack-connector/*`, but TackQuote published
@@ -90,7 +92,9 @@ tack-zencart/
     │   ├── tack_quote_connection.php                           Test connection page
     │   └── includes/
     │       ├── extra_datafiles/tack_quote.php                  Page filename constant
-    │       └── languages/english/extra_definitions/tack_quote.php  Admin text
+    │       ├── languages/english/extra_definitions/tack_quote.php  Admin text
+    │       ├── auto_loaders/config.tack_quote.php              Runs the English fallback
+    │       └── init_includes/init_tack_quote_language.php      English text for non-English admins
     ├── ajax_tack_quote_request.php                             Storefront AJAX endpoint
     ├── tack-connector/index.php          Inbound catalog/order connector
     ├── tack-connector/.htaccess          Sub-path rewrite + Authorization passthrough
@@ -122,8 +126,11 @@ In this repository the same files sit flat at the repository root
    - `includes/classes/tack_api_client.php` → your store's `includes/classes/`.
    - `admin/` → **your admin folder** (Zen Cart asks you to rename `admin` at
      install, so it is rarely called `admin`): `tack_quote_connection.php` goes in that
-     folder, and the two `includes/...` files into its `includes/extra_datafiles/` and
-     `includes/languages/english/extra_definitions/`. The Test connection page needs
+     folder, and the four `includes/...` files into the matching folders under its
+     `includes/` (`extra_datafiles/`, `languages/english/extra_definitions/`,
+     `auto_loaders/`, `init_includes/`). The last two make the English labels the
+     fallback on an admin that uses another language; without them the menu entries
+     and the page have no text there. The Test connection page needs
      Zen Cart 1.5.7 or later.
    - `includes/templates/template_default/templates/tpl_tack_quote_button.php`,
      `.../css/tack_quote_button.css`, `.../jscript/tack_quote_button.js` → the

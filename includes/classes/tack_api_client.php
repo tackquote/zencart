@@ -20,6 +20,9 @@ if (!defined('DIR_WS_INCLUDES') && !defined('TACK_QUOTE_STANDALONE_TEST')) {
 
 class TackApiClient
 {
+    /** This module's version, sent in the User-Agent. Keep equal to tack-connector/index.php's `version`. */
+    const VERSION = '1.1.1';
+
     /** @var string */
     protected $baseUrl;
 
@@ -96,7 +99,7 @@ class TackApiClient
             'X-Api-Key: ' . $this->apiKey,
             'Content-Type: application/json',
             'Accept: application/json',
-            'User-Agent: TackQuote-ZenCart/1.0.0',
+            'User-Agent: TackQuote-ZenCart/' . self::VERSION,
         );
 
         $ch = curl_init($url);

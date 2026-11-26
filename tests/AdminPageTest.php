@@ -47,12 +47,14 @@ function page($case)
 {
     global $log;
     @unlink($log);
+    @unlink($log . '.ua');
     touch($log);
+    touch($log . '.ua');
     $case += array('apiUrl' => '', 'apiKey' => '', 'post' => false, 'token' => 'session_token_123');
     $out = shell_exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/admin-page/run-case.php')
         . ' ' . escapeshellarg(json_encode($case)) . ' 2>&1');
 
-    return array('html' => (string) $out, 'requests' => trim(file_get_contents($log)));
+    return array('html' => (string) $out, 'requests' => trim(file_get_contents($log)), 'ua' => trim(file_get_contents($log . '.ua')));
 }
 
 $r = page(array('apiUrl' => $api . '/v1', 'apiKey' => 'good_key'));
@@ -87,9 +89,31 @@ $r = page(array('apiUrl' => 'https://x.example/"><script>alert(1)</script>', 'ap
 check('the API URL setting is escaped when shown', strpos($r['html'], '&quot;&gt;&lt;script&gt;') !== false && strpos($r['html'], '<script>alert') === false);
 check('an empty API key shows "not set"', strpos($r['html'], 'not set') !== false);
 
+// User-Agent: the module's real version, the same one tack-connector reports.
+$r = page(array('apiUrl' => $api . '/v1', 'apiKey' => 'good_key', 'post' => true));
+preg_match("/'version'\s*=>\s*'([0-9.]+)'/", file_get_contents(__DIR__ . '/../tack-connector/index.php'), $cv);
+check('User-Agent is TackQuote-ZenCart/<module version>, equal to tack-connector\'s version',
+    isset($cv[1]) && $r['ua'] === 'TackQuote-ZenCart/' . $cv[1]);
+
+// A non-English admin: Zen Cart loads no TackQuote language file, the init script fills in English.
+$r = page(array('apiUrl' => $api . '/v1', 'apiKey' => 'good_key', 'language' => 'french', 'menuOnly' => true));
+check('non-English admin: both menu labels and the page filename are defined (menu rows listed)',
+    strpos($r['html'], 'UNDEFINED') === false && strpos($r['html'], 'BOX_TACK_QUOTE_CONNECTION=TackQuote Test connection') !== false
+    && strpos($r['html'], 'BAD AUTOLOAD') === false);
+$r = page(array('apiUrl' => $api . '/v1', 'apiKey' => 'good_key', 'language' => 'french', 'post' => true));
+check('non-English admin: the page renders and tests without an undefined constant',
+    strpos($r['html'], 'Connected: TackQuote accepted this API key.') !== false
+    && stripos($r['html'], 'Error') === false && stripos($r['html'], 'Warning:') === false);
+$r = page(array('apiUrl' => $api . '/v1', 'apiKey' => 'good_key', 'language' => 'french', 'menuOnly' => true,
+    'translated' => array('BOX_TACK_QUOTE_CONNECTION' => 'TackQuote : tester la connexion')));
+check('a translated label loaded first wins over the English fallback, without a redefinition warning',
+    strpos($r['html'], 'BOX_TACK_QUOTE_CONNECTION=TackQuote : tester la connexion') !== false
+    && stripos($r['html'], 'already defined') === false && stripos($r['html'], 'Warning') === false);
+
 proc_terminate($server);
 proc_close($server);
 @unlink($log);
+@unlink($log . '.ua');
 
 echo 'passed: ' . $passed . ', failed: ' . count($failures) . PHP_EOL;
 exit(empty($failures) ? 0 : 1);

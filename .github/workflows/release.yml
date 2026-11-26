@@ -41,6 +41,7 @@ jobs:
         run: |
           php tests/ConnectionTest.php
           php tests/AdminPageTest.php
+          php tests/SqlPatchPrefixTest.php
 
       - name: Build release artifact(s)
         run: bash scripts/package.sh dist

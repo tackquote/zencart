@@ -5,7 +5,7 @@
  * securityToken hidden field to a POST form; zen_output_string_protected() is
  * htmlspecialchars). The page's own code and the real TackApiClient (real cURL) run
  * unchanged. Called by AdminPageTest.php, one process per case, with the case as JSON
- * in argv[1]: {apiUrl, apiKey, post, token}.
+ * in argv[1]: {apiUrl, apiKey, post, token, language?, translated?, menuOnly?}.
  */
 $case = json_decode($argv[1], true);
 $repo = dirname(__DIR__, 2);
@@ -17,8 +17,38 @@ define('TABLE_CONFIGURATION_GROUP', 'configuration_group');
 define('FILENAME_CONFIGURATION', 'configuration');
 define('TACK_API_URL', $case['apiUrl']);
 define('TACK_API_KEY', $case['apiKey']);
+define('IS_ADMIN_FLAG', true);
 require $repo . '/admin/includes/extra_datafiles/tack_quote.php';
-require $repo . '/admin/includes/languages/english/extra_definitions/tack_quote.php';
+// Zen Cart loads extra_definitions/ only for the admin's own language (breakpoint 65),
+// then runs the auto_loaders' init scripts (TackQuote's at 66). `language` other than
+// english = no TackQuote file for that language; a `translated` map stands in for a
+// partial translation loaded at 65.
+$language = isset($case['language']) ? $case['language'] : 'english';
+if ($language === 'english') {
+    require $repo . '/admin/includes/languages/english/extra_definitions/tack_quote.php';
+}
+foreach (isset($case['translated']) ? $case['translated'] : array() as $k => $v) {
+    define($k, $v);
+}
+$autoLoadConfig = array();
+require $repo . '/admin/includes/auto_loaders/config.tack_quote.php';
+ksort($autoLoadConfig);
+foreach ($autoLoadConfig as $breakpoint => $entries) {
+    foreach ($entries as $entry) {
+        if ($breakpoint <= 65 || $entry['autoType'] !== 'init_script') {
+            echo 'BAD AUTOLOAD ENTRY ' . $breakpoint . PHP_EOL;
+            continue;
+        }
+        require $repo . '/admin/includes/init_includes/' . $entry['loadFile'];
+    }
+}
+if (!empty($case['menuOnly'])) {
+    // What zen_get_admin_pages() needs for the two admin_pages rows install.sql adds.
+    foreach (array('BOX_TACK_QUOTE_CONNECTION', 'BOX_CONFIGURATION_TACKQUOTE', 'FILENAME_TACK_QUOTE_CONNECTION') as $c) {
+        echo $c . '=' . (defined($c) ? constant($c) : 'UNDEFINED') . PHP_EOL;
+    }
+    exit(0);
+}
 
 session_id('test');
 $_SESSION = array('securityToken' => 'session_token_123');
