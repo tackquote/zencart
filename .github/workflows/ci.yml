@@ -2,7 +2,8 @@ name: CI
 
 # Lint every PHP file and run the tests that can run without a live store.
 #
-# Zen Cart has no runnable test suite in this repository; lint only.
+# tests/ConnectionTest.php is self-contained (no Zen Cart, no network): it checks how
+# TackApiClient reads each TackQuote ping answer, using real response bodies.
 
 on:
   push:

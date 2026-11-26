@@ -37,10 +37,12 @@ is claimed.
 > `TackApiClient::testConnection()` calls `GET /integrations/zencart/ping`, which
 > TackQuote authenticates with the API key. It used to fall back to `GET /health`
 > when the ping failed for any reason, and `/health` answers 200 without a key, so a
-> wrong or revoked key passed. Now a 401 or 403 returns *TackQuote rejected this API
-> key*; `/health` is tried only when the ping got no answer, a 404 (an older
-> TackQuote API) or a 5xx, and then returns *TackQuote is reachable, but the API key
-> could not be checked*, never success. `checkConnection()` returns the same verdict
+> wrong or revoked key passed. Now a 401 (TackQuote's answer to a wrong, revoked or
+> expired key) returns *TackQuote rejected this API key*; a 403 comes with a valid key
+> (for example the plan's monthly API-call limit) and returns TackQuote's own message.
+> `/health` is tried only when the ping got no answer, a 404 (an older TackQuote API)
+> or a 5xx, and then returns *TackQuote is reachable, but the API key could not be
+> checked*, never success. A 2xx counts only when it is the ping's own `{"ok": true}`. `checkConnection()` returns the same verdict
 > as data. Tests: `php tests/ConnectionTest.php` (run in CI and before every release).
 > The storefront button and the connector are unchanged.
 
