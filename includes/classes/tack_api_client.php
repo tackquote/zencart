@@ -36,6 +36,12 @@ class TackApiClient
         $this->apiKey = (string) $apiKey;
     }
 
+    /** Outcomes of checkConnection(). */
+    const CONNECTION_OK = 'ok';
+    const CONNECTION_KEY_REJECTED = 'key_rejected';
+    const CONNECTION_KEY_UNCHECKED = 'key_unchecked';
+    const CONNECTION_FAILED = 'failed';
+
     /**
      * Perform an authenticated request against the TackQuote API.
      *
@@ -52,6 +58,25 @@ class TackApiClient
         }
         if (!function_exists('curl_init')) {
             return 'PHP cURL extension is not available on this server.';
+        }
+
+        $result = $this->exchange($method, $path, $body);
+
+        return $result['error'] !== null ? $result['error'] : $result['data'];
+    }
+
+    /**
+     * One HTTP exchange, keeping the status code that request() folds into a string.
+     *
+     * `status` is 0 when no HTTP answer arrived at all (DNS, refused, TLS, timeout,
+     * or no cURL extension). `error` is null exactly when the status is 2xx.
+     *
+     * @return array{status: int, data: array, error: string|null}
+     */
+    protected function exchange($method, $path, $body = null)
+    {
+        if (!function_exists('curl_init')) {
+            return array('status' => 0, 'data' => array(), 'error' => 'PHP cURL extension is not available on this server.');
         }
 
         $url = $this->baseUrl . $path;
@@ -82,38 +107,85 @@ class TackApiClient
         curl_close($ch);
 
         if ($errno) {
-            return sprintf('Connection error: %s', $error);
+            return array('status' => 0, 'data' => array(), 'error' => sprintf('Connection error: %s', $error));
         }
 
         $data = json_decode((string) $response, true);
 
         if ($httpCode < 200 || $httpCode >= 300) {
             $message = is_array($data) && isset($data['message'])
-                ? (is_array($data['message']) ? implode(', ', $data['message']) : $data['message'])
+                ? (is_array($data['message']) ? implode(', ', $data['message']) : (string) $data['message'])
                 : sprintf('TackQuote API returned HTTP %d.', $httpCode);
 
-            return $message;
+            return array('status' => $httpCode, 'data' => is_array($data) ? $data : array(), 'error' => $message);
         }
 
-        return is_array($data) ? $data : array();
+        return array('status' => $httpCode, 'data' => is_array($data) ? $data : array(), 'error' => null);
     }
 
     /**
-     * Lightweight connectivity check against the Zen Cart plugin endpoints.
+     * Connectivity + API-key check against `GET /integrations/zencart/ping`, which
+     * TackQuote authenticates with the store's API key. Any 2xx is CONNECTION_OK: a
+     * lapsed TackQuote account still answers 200 (with a reduced `capabilities` list),
+     * and its key is valid.
      *
-     * @return true|string True on success, or an error message string.
+     * 401/403 mean TackQuote rejected the key: CONNECTION_KEY_REJECTED, no fallback.
+     * This used to fall back to `GET /health` on ANY ping failure, and /health answers
+     * 200 without a key, so a wrong or revoked key reported success.
+     *
+     * `/health` is tried only when the ping failure says nothing about the key: no HTTP
+     * answer (network error, timeout), 404 (a TackQuote API older than the route) or
+     * 5xx. If /health then answers 2xx the result is CONNECTION_KEY_UNCHECKED, never OK.
+     * Every other status (400, 429, ...) is CONNECTION_FAILED with TackQuote's message.
+     *
+     * @return array{result: string, message: string} `message` is the ping's own error
+     *                                                text ('' on success).
+     */
+    public function checkConnection()
+    {
+        if ($this->apiKey === '') {
+            return array('result' => self::CONNECTION_FAILED, 'message' => 'No TackQuote API key configured.');
+        }
+
+        $ping = $this->exchange('GET', '/integrations/zencart/ping');
+        $status = $ping['status'];
+
+        if ($ping['error'] === null) {
+            return array('result' => self::CONNECTION_OK, 'message' => '');
+        }
+
+        if ($status === 401 || $status === 403) {
+            return array('result' => self::CONNECTION_KEY_REJECTED, 'message' => (string) $ping['error']);
+        }
+
+        if ($status === 0 || $status === 404 || $status >= 500) {
+            $health = $this->exchange('GET', '/health');
+            if ($health['error'] === null) {
+                return array('result' => self::CONNECTION_KEY_UNCHECKED, 'message' => (string) $ping['error']);
+            }
+        }
+
+        return array('result' => self::CONNECTION_FAILED, 'message' => (string) $ping['error']);
+    }
+
+    /**
+     * @return true|string True only when TackQuote accepted the API key; otherwise a
+     *                     message. A reachable API with an unchecked key is NOT true.
      */
     public function testConnection()
     {
-        $result = $this->request('GET', '/integrations/zencart/ping');
-        if (is_string($result)) {
-            // Fall back to the generic health check so a store owner still gets
-            // a useful signal if /integrations/zencart/ping isn't reachable
-            // (e.g. an older API deployment behind a cache/proxy).
-            $result = $this->request('GET', '/health');
-        }
+        $check = $this->checkConnection();
 
-        return is_string($result) ? $result : true;
+        switch ($check['result']) {
+            case self::CONNECTION_OK:
+                return true;
+            case self::CONNECTION_KEY_REJECTED:
+                return 'TackQuote rejected this API key. Check it in TackQuote under Settings > Developer > API keys.';
+            case self::CONNECTION_KEY_UNCHECKED:
+                return 'TackQuote is reachable, but the API key could not be checked.';
+            default:
+                return $check['message'];
+        }
     }
 
     /**

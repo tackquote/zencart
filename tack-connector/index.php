@@ -240,7 +240,7 @@ if ($tackConnectorResource === '' ) {
     // any store data — the caller is already authenticated at this point.
     tack_connector_respond(200, array(
         'connector' => 'tackquote-zencart',
-        'version'   => '1.1.0',
+        'version'   => '1.1.1',
         'routes'    => array('GET /products', 'GET /orders', 'GET /orders/{id}', 'POST /orders'),
     ));
 }
