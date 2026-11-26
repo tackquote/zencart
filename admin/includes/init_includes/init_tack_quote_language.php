@@ -16,4 +16,10 @@ if (!defined('IS_ADMIN_FLAG')) {
     die('Illegal Access');
 }
 
-require_once __DIR__ . '/../languages/english/extra_definitions/tack_quote.php';
+// Guarded: a store that skipped the English file must still be able to open its admin.
+// Without the file the TackQuote menu entries are just absent, as they were before.
+$tackQuoteEnglishText = __DIR__ . '/../languages/english/extra_definitions/tack_quote.php';
+if (is_file($tackQuoteEnglishText)) {
+    require_once $tackQuoteEnglishText;
+}
+unset($tackQuoteEnglishText);

@@ -5,7 +5,7 @@
  * securityToken hidden field to a POST form; zen_output_string_protected() is
  * htmlspecialchars). The page's own code and the real TackApiClient (real cURL) run
  * unchanged. Called by AdminPageTest.php, one process per case, with the case as JSON
- * in argv[1]: {apiUrl, apiKey, post, token, language?, translated?, menuOnly?}.
+ * in argv[1]: {apiUrl, apiKey, post, token, language?, translated?, menuOnly?, noEnglishFile?}.
  */
 $case = json_decode($argv[1], true);
 $repo = dirname(__DIR__, 2);
@@ -39,7 +39,15 @@ foreach ($autoLoadConfig as $breakpoint => $entries) {
             echo 'BAD AUTOLOAD ENTRY ' . $breakpoint . PHP_EOL;
             continue;
         }
-        require $repo . '/admin/includes/init_includes/' . $entry['loadFile'];
+        $initFile = $repo . '/admin/includes/init_includes/' . $entry['loadFile'];
+        if (!empty($case['noEnglishFile'])) {
+            // Run a copy of the init script from a tree with no English language file.
+            $bare = sys_get_temp_dir() . '/tack-bare-' . getmypid() . '/includes/init_includes';
+            @mkdir($bare, 0777, true);
+            copy($initFile, $bare . '/' . $entry['loadFile']);
+            $initFile = $bare . '/' . $entry['loadFile'];
+        }
+        require $initFile;
     }
 }
 if (!empty($case['menuOnly'])) {

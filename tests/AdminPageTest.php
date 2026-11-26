@@ -110,6 +110,12 @@ check('a translated label loaded first wins over the English fallback, without a
     strpos($r['html'], 'BOX_TACK_QUOTE_CONNECTION=TackQuote : tester la connexion') !== false
     && stripos($r['html'], 'already defined') === false && stripos($r['html'], 'Warning') === false);
 
+// The English file missing: the init script must not take the whole admin down.
+$r = page(array('apiUrl' => $api . '/v1', 'apiKey' => 'good_key', 'language' => 'french', 'menuOnly' => true, 'noEnglishFile' => true));
+check('English file missing: init script loads without a fatal, menu labels simply absent',
+    strpos($r['html'], 'BOX_TACK_QUOTE_CONNECTION=UNDEFINED') !== false
+    && stripos($r['html'], 'Fatal') === false && stripos($r['html'], 'Warning') === false);
+
 proc_terminate($server);
 proc_close($server);
 @unlink($log);
