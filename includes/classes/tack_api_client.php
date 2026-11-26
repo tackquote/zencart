@@ -20,6 +20,9 @@ if (!defined('DIR_WS_INCLUDES') && !defined('TACK_QUOTE_STANDALONE_TEST')) {
 
 class TackApiClient
 {
+    /** This module's version, sent in the User-Agent. Keep equal to tack-connector/index.php's `version`. */
+    const VERSION = '1.1.1';
+
     /** @var string */
     protected $baseUrl;
 
@@ -41,6 +44,10 @@ class TackApiClient
     const CONNECTION_KEY_REJECTED = 'key_rejected';
     const CONNECTION_KEY_UNCHECKED = 'key_unchecked';
     const CONNECTION_FAILED = 'failed';
+    const CONNECTION_WRONG_ADDRESS = 'wrong_address';
+
+    /** What testConnection() says for CONNECTION_WRONG_ADDRESS. */
+    const MESSAGE_WRONG_ADDRESS = 'TackQuote answered, but not at the API address: check the TackQuote API URL setting (it should end in /v1).';
 
     /**
      * Perform an authenticated request against the TackQuote API.
@@ -71,26 +78,28 @@ class TackApiClient
      *
      * `error` is set when no HTTP answer arrived at all (DNS, refused, TLS, timeout).
      *
-     * @param string $method
-     * @param string $path
-     * @param array|null $body
+     * @param string      $method
+     * @param string      $path
+     * @param array|null  $body
+     * @param string|null $base Where to send it instead of the configured API URL (only
+     *                          the origin's own /health probe uses this); null = API URL.
      *
      * @return array{error: string|null, status: int, body: string}
      */
-    protected function transport($method, $path, $body = null)
+    protected function transport($method, $path, $body = null, $base = null)
     {
         if (!function_exists('curl_init')) {
             return array('error' => 'PHP cURL extension is not available on this server.', 'status' => 0, 'body' => '');
         }
 
-        $url = $this->baseUrl . $path;
+        $url = ($base === null ? $this->baseUrl : $base) . $path;
 
         $headers = array(
             'Authorization: Bearer ' . $this->apiKey,
             'X-Api-Key: ' . $this->apiKey,
             'Content-Type: application/json',
             'Accept: application/json',
-            'User-Agent: TackQuote-ZenCart/1.0.0',
+            'User-Agent: TackQuote-ZenCart/' . self::VERSION,
         );
 
         $ch = curl_init($url);
@@ -123,15 +132,16 @@ class TackApiClient
      * `status` is 0 when no HTTP answer arrived at all (DNS, refused, TLS, timeout).
      * `error` is null exactly when the status is 2xx.
      *
-     * @param string $method
-     * @param string $path
-     * @param array|null $body
+     * @param string      $method
+     * @param string      $path
+     * @param array|null  $body
+     * @param string|null $base See transport().
      *
      * @return array{status: int, data: array, error: string|null}
      */
-    protected function exchange($method, $path, $body = null)
+    protected function exchange($method, $path, $body = null, $base = null)
     {
-        $raw = $this->transport($method, $path, $body);
+        $raw = $this->transport($method, $path, $body, $base);
         if ($raw['error'] !== null) {
             return array('status' => 0, 'data' => array(), 'error' => $raw['error']);
         }
@@ -164,8 +174,15 @@ class TackApiClient
      * 200 without a key, so a wrong or revoked key reported success.
      *
      * `/health` is tried only when the ping failure says nothing about the key: no HTTP
-     * answer (network error, timeout), 404 (a TackQuote API older than the route) or
-     * 5xx. If /health then answers 2xx the result is CONNECTION_KEY_UNCHECKED, never OK.
+     * answer (network error, timeout), a 404 or a 5xx. A /health answer counts only when
+     * it is TackQuote's own body (isTackQuoteHealth()); any other 2xx is CONNECTION_FAILED.
+     * - No answer or 5xx, then TackQuote's /health: CONNECTION_KEY_UNCHECKED, never OK.
+     * - 404: every current TackQuote API has the ping route, so a 404 means the request
+     *   did not reach it. When TackQuote's /health answers at the origin (or at the API
+     *   URL when that does not end in /v1) the API URL setting is wrong, usually missing
+     *   `/v1`: CONNECTION_WRONG_ADDRESS. Only when the API URL already ends in /v1 and
+     *   TackQuote's /health answers there is it a TackQuote API without the ping route:
+     *   CONNECTION_KEY_UNCHECKED.
      * Every other status (400, 403, 429, ...) is CONNECTION_FAILED with TackQuote's message.
      *
      * @return array{result: string, message: string} `message` is the ping's own error
@@ -202,9 +219,21 @@ class TackApiClient
             return array('result' => self::CONNECTION_KEY_REJECTED, 'message' => (string) $ping['error']);
         }
 
-        if ($status === 0 || $status === 404 || $status >= 500) {
-            $health = $this->exchange('GET', '/health');
-            if ($health['error'] === null) {
+        if ($status === 404) {
+            $atApiUrl = $this->isTackQuoteHealth($this->exchange('GET', '/health'));
+            if ($atApiUrl && preg_match('~/v1$~i', $this->baseUrl)) {
+                return array('result' => self::CONNECTION_KEY_UNCHECKED, 'message' => (string) $ping['error']);
+            }
+            if ($atApiUrl) {
+                return array('result' => self::CONNECTION_WRONG_ADDRESS, 'message' => (string) $ping['error']);
+            }
+            $origin = $this->originOf($this->baseUrl);
+            if ($origin !== '' && $origin !== $this->baseUrl
+                && $this->isTackQuoteHealth($this->exchange('GET', '/health', null, $origin))) {
+                return array('result' => self::CONNECTION_WRONG_ADDRESS, 'message' => (string) $ping['error']);
+            }
+        } elseif ($status === 0 || $status >= 500) {
+            if ($this->isTackQuoteHealth($this->exchange('GET', '/health'))) {
                 return array('result' => self::CONNECTION_KEY_UNCHECKED, 'message' => (string) $ping['error']);
             }
         }
@@ -213,13 +242,53 @@ class TackApiClient
     }
 
     /**
-     * @return true|string True only when TackQuote accepted the API key; otherwise a
-     *                     message. A reachable API with an unchecked key is NOT true.
+     * True only for TackQuote's own `GET /health` answer: a 2xx whose body is
+     * `{"status": "ok", "database": "connected", "uptime": <seconds>, ...}` (the health
+     * handler in tack apps/api/src/main.ts, served at both /health and /v1/health). Any
+     * other 2xx (a shop's web page, another service's health check) proves nothing about
+     * TackQuote.
+     *
+     * @param array{status: int, data: array, error: string|null} $exchange
+     *
+     * @return bool
      */
-    public function testConnection()
+    protected function isTackQuoteHealth($exchange)
     {
-        $check = $this->checkConnection();
+        $d = $exchange['data'];
 
+        return $exchange['error'] === null
+            && isset($d['status'], $d['database'], $d['uptime'])
+            && $d['status'] === 'ok'
+            && $d['database'] === 'connected'
+            && (is_int($d['uptime']) || is_float($d['uptime']));
+    }
+
+    /**
+     * `scheme://host[:port]` of a URL, or '' when it has no scheme or host.
+     *
+     * @param string $url
+     *
+     * @return string
+     */
+    protected function originOf($url)
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+            return '';
+        }
+
+        return $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+    }
+
+    /**
+     * The merchant-facing sentence for a checkConnection() verdict.
+     *
+     * @param array{result: string, message: string} $check
+     *
+     * @return true|string True only for CONNECTION_OK; otherwise the message to show.
+     */
+    public static function connectionMessage($check)
+    {
         switch ($check['result']) {
             case self::CONNECTION_OK:
                 return true;
@@ -227,9 +296,20 @@ class TackApiClient
                 return 'TackQuote rejected this API key. Check it in TackQuote under Settings > Developer > API keys.';
             case self::CONNECTION_KEY_UNCHECKED:
                 return 'TackQuote is reachable, but the API key could not be checked.';
+            case self::CONNECTION_WRONG_ADDRESS:
+                return self::MESSAGE_WRONG_ADDRESS;
             default:
                 return $check['message'];
         }
+    }
+
+    /**
+     * @return true|string True only when TackQuote accepted the API key; otherwise a
+     *                     message. A reachable API with an unchecked key is NOT true.
+     */
+    public function testConnection()
+    {
+        return self::connectionMessage($this->checkConnection());
     }
 
     /**

@@ -40,11 +40,28 @@ is claimed.
 > wrong or revoked key passed. Now a 401 (TackQuote's answer to a wrong, revoked or
 > expired key) returns *TackQuote rejected this API key*; a 403 comes with a valid key
 > (for example the plan's monthly API-call limit) and returns TackQuote's own message.
-> `/health` is tried only when the ping got no answer, a 404 (an older TackQuote API)
-> or a 5xx, and then returns *TackQuote is reachable, but the API key could not be
-> checked*, never success. A 2xx counts only when it is the ping's own `{"ok": true}`. `checkConnection()` returns the same verdict
-> as data. Tests: `php tests/ConnectionTest.php` (run in CI and before every release).
-> The storefront button and the connector are unchanged.
+> `/health` is tried only when the ping got no answer, a 404 or a 5xx, and it counts
+> only when the body is TackQuote's own health answer (`"status": "ok"`,
+> `"database": "connected"`, a numeric `uptime`), never a web page or another service's
+> `{"status":"ok"}`. After no answer or a 5xx it returns *TackQuote is reachable, but the
+> API key could not be checked*, never success. After a 404 the API URL setting is
+> almost always wrong (usually missing `/v1`): when TackQuote's `/health` answers at
+> that host it returns *TackQuote answered, but not at the API address: check the
+> TackQuote API URL setting (it should end in /v1)*. A 2xx counts only when it is the
+> ping's own `{"ok": true}`. `checkConnection()` returns the same verdict as data.
+>
+> **Admin: Tools ▸ TackQuote Test connection** (new admin page,
+> `admin/tack_quote_connection.php`) runs that check with the saved settings and shows
+> the result. The SQL now also registers **Configuration ▸ TackQuote** in the admin
+> menu: Zen Cart 1.5+ builds its menu only from the `admin_pages` table, so the settings
+> group created by earlier versions of `install.sql` had no menu entry. Stores that
+> already ran `install.sql`: copy the new `admin/` files and run
+> `zc_install/upgrade_admin_page.sql`.
+>
+> Tests: `php tests/ConnectionTest.php`, `php tests/AdminPageTest.php` and
+> `php tests/SqlPatchPrefixTest.php` (every table in `zc_install/*.sql` gets the store's
+> table prefix under Tools ▸ Install SQL Patches) run in CI and before every release.
+> The API client's User-Agent now carries the real module version. The storefront button and the connector are unchanged.
 
 > **New in 1.1.0.** The connector half did not exist before. `ZenCartService`
 > had always called `{baseUrl}/tack-connector/*`, but TackQuote published
@@ -65,10 +82,19 @@ tack-zencart/
 ├── zc_install/                          ← run these in admin. Do NOT copy to the server.
 │   ├── install.sql                      Adds the TackQuote settings group (see below)
 │   ├── uninstall.sql                    Removes them
-│   └── upgrade_connector.sql            Adds ONLY the new connector token, for
-│                                        stores that ran install.sql before 1.1.0
+│   ├── upgrade_connector.sql            Adds ONLY the new connector token, for
+│   │                                    stores that ran install.sql before 1.1.0
+│   └── upgrade_admin_page.sql           Adds ONLY the admin menu entries, for
+│                                        stores that ran install.sql before 1.1.1
 └── store-root/                          ← copy the CONTENTS of this folder into
     │                                      your Zen Cart docroot (not the folder itself)
+    ├── admin/                           Rename to YOUR admin folder's name (see step 1)
+    │   ├── tack_quote_connection.php                           Test connection page
+    │   └── includes/
+    │       ├── extra_datafiles/tack_quote.php                  Page filename constant
+    │       ├── languages/english/extra_definitions/tack_quote.php  Admin text
+    │       ├── auto_loaders/config.tack_quote.php              Runs the English fallback
+    │       └── init_includes/init_tack_quote_language.php      English text for non-English admins
     ├── ajax_tack_quote_request.php                             Storefront AJAX endpoint
     ├── tack-connector/index.php          Inbound catalog/order connector
     ├── tack-connector/.htaccess          Sub-path rewrite + Authorization passthrough
@@ -98,6 +124,14 @@ In this repository the same files sit flat at the repository root
      → your store root, so it sits at `{store}/tack-connector/`. Only needed if
      you want catalog/order sync; skip it for the quote button alone.
    - `includes/classes/tack_api_client.php` → your store's `includes/classes/`.
+   - `admin/` → **your admin folder** (Zen Cart asks you to rename `admin` at
+     install, so it is rarely called `admin`): `tack_quote_connection.php` goes in that
+     folder, and the four `includes/...` files into the matching folders under its
+     `includes/` (`extra_datafiles/`, `languages/english/extra_definitions/`,
+     `auto_loaders/`, `init_includes/`). The last two make the English labels the
+     fallback on an admin that uses another language; without them the menu entries
+     and the page have no text there. The Test connection page needs
+     Zen Cart 1.5.7 or later.
    - `includes/templates/template_default/templates/tpl_tack_quote_button.php`,
      `.../css/tack_quote_button.css`, `.../jscript/tack_quote_button.js` → the
      matching folders under your store's active template (`template_default`
@@ -110,7 +144,14 @@ In this repository the same files sit flat at the repository root
    (<https://docs.zen-cart.com/user/admin_pages/tools/install_sql_patches/>).
    phpMyAdmin or `mysql your_db < zc_install/install.sql` also work, but there
    you must add the table prefix yourself if your store uses one. This adds a
-   "TackQuote" configuration group.
+   "TackQuote" configuration group and two admin menu entries,
+   **Configuration ▸ TackQuote** and **Tools ▸ TackQuote Test connection**
+   (`admin_pages` rows; an admin who is not a superuser needs them added to their
+   profile under Admins ▸ Admin Profiles).
+
+   **Already ran `install.sql` from 1.1.0 or earlier?** Run
+   `zc_install/upgrade_admin_page.sql` for the menu entries; it is guarded by
+   `NOT EXISTS` on each page key and safe to re-run.
 
    **Already installed a pre-1.1.0 version?** Run
    `zc_install/upgrade_connector.sql` instead — it adds only the new
@@ -128,15 +169,19 @@ In this repository the same files sit flat at the repository root
    (Verified on the Zen Cart v1.5.8a `configuration` / `configuration_group`
    schema; `uninstall.sql` and `upgrade_connector.sql` are both re-runnable.)
 3. **Configure in admin.** In Zen Cart admin, go to **Configuration ▸
-   TackQuote** (it appears automatically once the SQL patch has run — Zen
-   Cart's admin configuration screen renders a form for any group in
-   `configuration_group`/`configuration`, same as every built-in setting).
+   TackQuote** (the menu entry comes from the `admin_pages` row the SQL patch adds;
+   Zen Cart's admin configuration screen then renders a form for the group, same
+   as every built-in setting).
    Set:
    - **TackQuote API URL** — defaults to `https://api.tackquote.com/v1`.
    - **TackQuote API Key** — create one in TackQuote under Settings ▸
      Developer ▸ API Keys.
 
      > **The key must carry the `quotes:write` scope.** *Test connection* uses the unscoped `ping` route, so a key without it passes the test and then fails every real quote submission with a 403.
+
+     Then open **Tools ▸ TackQuote Test connection** and press *Test connection*.
+     It shows *Connected* only when TackQuote accepted the key; otherwise it says
+     why (a rejected key, a wrong API URL, or TackQuote's own message).
    - **Show "Request a Quote" button** — `true`/`false`.
    - **Button label** — e.g. "Request a Quote" or "Get a B2B quote".
    - **TackQuote connector token** — *optional; only needed for catalog/order
@@ -171,6 +216,12 @@ In this repository the same files sit flat at the repository root
   (`TACK_API_URL`, `TACK_API_KEY`, `TACK_ENABLE_WIDGET`, `TACK_BUTTON_LABEL`),
   so the storefront files below read real, live config with no extra
   wiring.
+- **Admin Test connection page** (`admin/tack_quote_connection.php`, Tools ▸
+  TackQuote Test connection) — calls `TackApiClient::checkConnection()` with the saved
+  API URL and key on a POST carrying the admin session's `securityToken`, and shows
+  the verdict; everything it prints is escaped with `zen_output_string_protected()`.
+  `tests/AdminPageTest.php` runs the page against a stand-in TackQuote API with the
+  real client and cURL transport (only the Zen Cart core functions it calls are stubbed).
 - **Storefront button + modal** (`tpl_tack_quote_button.php` +
   `tack_quote_button.css` + `tack_quote_button.js`) — a real template partial
   that renders a button and a small modal (email, quantity, note) for the
@@ -310,9 +361,10 @@ using `$db->bindVars()` for every non-integer value and `(int)` casts elsewhere.
   other than `template_default`, edit those two `href`/`src` values to your
   template's directory as well, or the button renders unstyled and does
   nothing when clicked.
-- **No "Test connection" button in admin.** This module uses Zen Cart's native
-  configuration-group rendering rather than a custom admin page. Verify the
-  quote button from a product page, and the connector with
+- **Test connection checks the outbound half only** (this store → TackQuote, with
+  `TACK_API_KEY`). It is a separate admin page, not a button on the
+  Configuration ▸ TackQuote form, because Zen Cart renders that form itself. Check the
+  connector half with
   `curl -H "Authorization: Bearer <token>" {store}/tack-connector/` or
   TackQuote's own Test connection.
 - **Order options/attributes** are not carried by `POST /orders`; simple product
