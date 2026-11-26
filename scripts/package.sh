@@ -49,7 +49,7 @@ pack() { # pack <zipname> <top-level-dir> [extra zip -x args...]
 say "zencart"
 rm -rf "$STAGE/tack-zencart" && mkdir -p "$STAGE/tack-zencart/store-root"
 export_head "$STAGE/src"
-for p in tack-connector includes ajax_tack_quote_request.php; do
+for p in tack-connector includes admin ajax_tack_quote_request.php; do
   [ -e "$STAGE/src/$p" ] && cp -R "$STAGE/src/$p" "$STAGE/tack-zencart/store-root/"
 done
 cp -R "$STAGE/src/zc_install" "$STAGE/tack-zencart/"
